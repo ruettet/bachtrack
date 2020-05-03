@@ -2,7 +2,7 @@ from codecs import open
 from bs4 import BeautifulSoup
 from json import dumps, load, dump
 from datetime import datetime
-from requests import get
+from requests import get, exceptions
 from time import sleep
 
 
@@ -31,35 +31,41 @@ class BachtrackLeecher:
 
     def get_place(self):
         place = self.current_listing_soup.find('span', attrs={'itemtype': 'http://schema.org/Place'})
-        name = place.find('span', attrs={'itemprop': 'name'}).text
-        address = place.find('span', attrs={'itemtype': 'http://schema.org/Postaladdress'})
-        street = address.find('span', attrs={'itemprop': 'streetAddress'})
-        street = street.text if street else None
-        locality = address.find('a', attrs={'class': 'addressLocality'}).text
-        region = address.find('span', attrs={'itemprop': 'addressRegion'})
-        region = region.text if region else None
-        postalCode = address.find('span', attrs={'itemprop': 'postalCode'})
-        postalCode = postalCode.text if postalCode else None
-        country = address.find('a', attrs={'itemprop': 'addressCountry'}).text
-        gps = place.find('div', attrs={'itemtype': 'http://schema.org/GeoCoordinates'})
-        latitude = gps.find('meta', attrs={'itemprop': 'latitude'})['content']
-        latitude = float(latitude) if "." in latitude else None
-        longitude = gps.find('meta', attrs={'itemprop': 'longitude'})['content']
-        longitude = float(longitude) if "." in longitude else None
-        return {
-            "name": name,
-            "street": street,
-            "locality": locality,
-            "region": region,
-            "country": country,
-            "postalCode": postalCode,
-            "latitude": latitude,
-            "longitude": longitude
-        }
+        if place:
+            name = place.find('span', attrs={'itemprop': 'name'})
+            name = name.text if name else None
+            address = place.find('span', attrs={'itemtype': 'http://schema.org/Postaladdress'})
+            street = address.find('span', attrs={'itemprop': 'streetAddress'})
+            street = street.text if street else None
+            locality = address.find('a', attrs={'class': 'addressLocality'})
+            locality = locality.text if locality else None
+            region = address.find('span', attrs={'itemprop': 'addressRegion'})
+            region = region.text if region else None
+            postalCode = address.find('span', attrs={'itemprop': 'postalCode'})
+            postalCode = postalCode.text if postalCode else None
+            country = address.find('a', attrs={'itemprop': 'addressCountry'})
+            country = country.text if country else None
+            gps = place.find('div', attrs={'itemtype': 'http://schema.org/GeoCoordinates'})
+            latitude = gps.find('meta', attrs={'itemprop': 'latitude'})['content']
+            latitude = float(latitude) if "." in latitude else None
+            longitude = gps.find('meta', attrs={'itemprop': 'longitude'})['content']
+            longitude = float(longitude) if "." in longitude else None
+            return {
+                "name": name,
+                "street": street,
+                "locality": locality,
+                "region": region,
+                "country": country,
+                "postalCode": postalCode,
+                "latitude": latitude,
+                "longitude": longitude
+            }
 
     def get_date(self):
-        date_annotation = self.current_listing_soup.find('div', attrs={'class': 'listing-main-date'}).text
-        date = self.current_listing_soup.find('span', attrs={'itemprop': 'startDate'}).text
+        date_annotation = self.current_listing_soup.find('div', attrs={'class': 'listing-main-date'})
+        date_annotation = date_annotation.text if  date_annotation else None
+        date = self.current_listing_soup.find('span', attrs={'itemprop': 'startDate'})
+        date = date.text if date else None
         multiple_dates = self.current_listing_soup.find('a', attrs={'data-dates': True})
         if multiple_dates:
             multiple_dates = [datetime.utcfromtimestamp(float(item)).isoformat() for item in multiple_dates['data-dates'].split(',')]
@@ -107,11 +113,18 @@ class BachtrackLeecher:
                 )
         return performers
 
+    def get_response(self, url):
+        try:
+            return get(url)
+        except exceptions.ConnectionError:
+            sleep(60)
+            self.get_response(url)
+
     def leech_listing(self, listing_id):
         base_url = "https://bachtrack.com/22/291/render/"
-        sleep(5.0)
+        sleep(2.0)
         print("working on", base_url + str(listing_id))
-        r = get(base_url + str(listing_id))
+        r = self.get_response(base_url + str(listing_id))
         if r.status_code == 200:
             html = r.text
             self.current_listing_soup = BeautifulSoup(html, 'html.parser')
@@ -137,8 +150,8 @@ class BachtrackLeecher:
 def main():
     btl = BachtrackLeecher()
     #next_up = btl.get_last_listing_id() + 1
-    next_up = 309239
-    for i in range(next_up, 310000, 1):
+    next_up = 319968
+    for i in range(next_up, 200000, -1):
         btl.leech_listing(i)
         btl.persist()
 
